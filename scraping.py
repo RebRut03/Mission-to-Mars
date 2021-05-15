@@ -3,125 +3,190 @@ from splinter import Browser
 from bs4 import BeautifulSoup as soup
 from webdriver_manager.chrome import ChromeDriverManager
 import pandas as pd
+import datetime as dt
+
+def scrape_all():
+    # Initiate headless driver for deployment
+    executable_path = {'executable_path': ChromeDriverManager().install()}
+    browser = Browser('chrome', **executable_path, headless=True)
+
+    news_title, news_paragraph = mars_news(browser)
+
+    # Run all scraping functions and store results in a dictionary
+    data = {
+        "news_title": news_title,
+        "news_paragraph": news_paragraph,
+        "featured_image": featured_image(browser),
+        "facts": mars_facts(),
+        "last_modified": dt.datetime.now(),
+        "hemisphere_data": hemisphere_data(browser)
+    }
+
+    # Stop webdriver and return data
+    browser.quit()
+    return data
 
 # Set up Splinter
-executable_path = {'executable_path': ChromeDriverManager().install()}
-browser = Browser('chrome', **executable_path, headless=False)
+#executable_path = {'executable_path': ChromeDriverManager().install()}
+#browser = Browser('chrome', **executable_path, headless=False)
 
+# Refactor by Defining function; we're telling Python that we'll 
+# be using the browser variable we defined outside the function. 
+# All of our scraping code utilizes an automated browser, 
+# and without this section, our function wouldn't work.
+def mars_news(browser):
 
-# Visit the mars nasa news site
-url = 'https://redplanetscience.com'
-browser.visit(url)
-# Optional delay for loading the page; The optional delay is useful because 
-#sometimes dynamic pages take a little while to load, especially if they are image-heavy.
-browser.is_element_present_by_css('div.list_text', wait_time=1)
+    # Visit the mars nasa news site
+    url = 'https://redplanetscience.com/'
+    browser.visit(url)
+    # Optional delay for loading the page; The optional delay is useful because 
+    #sometimes dynamic pages take a little while to load, especially if they are image-heavy.
+    browser.is_element_present_by_css('div.list_text', wait_time=1)
 
+    #set up the HTML parser
+    html = browser.html
+    news_soup = soup(html, 'html.parser')
+  
 
+    # Add try/except for error handling
+    try:
+        slide_elem = news_soup.select_one('div.list_text')
+        # Use the parent element to find the first 'a' tag and save it as 'news_title'
+        news_title = slide_elem.find('div', class_='content_title').get_text()
+        # Use the parent element to find the paragraph text
+        news_p = slide_elem.find('div', class_='article_teaser_body').get_text()
 
-#set up the HTML parser
-html = browser.html
-news_soup = soup(html, 'html.parser')
-slide_elem = news_soup.select_one('div.list_text')
-#Notice how we've assigned slide_elem as the variable to look for the <div /> tag and 
-#its descendent (the other tags within the <div /> element)? This is our parent element. 
-#This means that this element holds all of the other elements within it, and 
-#we'll reference it when we want to filter search results even further. 
-#The . is used for selecting classes, such as list_text, so the code 'div.list_text' pinpoints the <div /> tag 
-#with the class of list_text. CSS works from right to left, such as returning the last item on the list instead of the first.
-#Because of this, when using select_one, the first matching element returned will be a <li /> element
-#with a class of slide and all nested elements within it.
+    except AttributeError:
+        return None, None
 
-
-
-#In this line of code, we chained .find onto our previously assigned variable, slide_elem. When we do this, 
-#we're saying, "This variable holds a ton of information, so look inside of that information to find this specific data.
-#" The data we're looking for is the content title, which we've specified by saying, "The specific data is in a <div /> 
-#with a class of 'content_title'."
-slide_elem.find('div', class_='content_title')
-
-
-# Use the parent element to find the first `a` tag and save it as `news_title`
-news_title = slide_elem.find('div', class_='content_title').get_text()
-news_title
-#We've added something new to our .find() method here: .get_text(). When this new method is chained onto .find(), 
-#only the text of the element is returned. The code above, for example, would return only the title of 
-#the news article and not any of the HTML tags or elements.
-
-
-# Use the parent element to find the paragraph text
-news_p = slide_elem.find('div', class_='article_teaser_body').get_text()
-news_p
-#.find() is used when we want only the first class and attribute we've specified.
-
+    return news_title, news_p
 
 # ### Featured Images
 
+def featured_image(browser):
+    # Visit URL
+    url = 'https://spaceimages-mars.com'
+    browser.visit(url)
 
+    # Find and click the full image button
+    full_image_elem = browser.find_by_tag('button')[1]
+    full_image_elem.click()
 
-# Visit URL
-url = 'https://spaceimages-mars.com'
-browser.visit(url)
+    # Parse the resulting html with soup
+    html = browser.html
+    img_soup = soup(html, 'html.parser')
 
+    # Find the relative image url
+    # Add try/except for error handling
+    try:
+        # Find the relative image url
+        img_url_rel = img_soup.find('img', class_='fancybox-image').get('src')
 
-
-# Find and click the full image button
-full_image_elem = browser.find_by_tag('button')[1]
-full_image_elem.click()
-
-
-
-
-# Parse the resulting html with soup
-html = browser.html
-img_soup = soup(html, 'html.parser')
-
-
-
-# Find the relative image url
-img_url_rel = img_soup.find('img', class_='fancybox-image').get('src')
-img_url_rel
-#An img tag is nested within this HTML, so we've included it.
-#.get('src') pulls the link to the image.
-#What we've done here is tell BeautifulSoup to look inside the <img /> tag for an image with a class of fancybox-image. 
-#Basically we're saying, "This is where the image we want lives—use the link that's inside these tags."
-
-
-
-
-# Use the base URL to create an absolute URL
-img_url = f'https://spaceimages-mars.com/{img_url_rel}'
-img_url
-#We're using an f-string for this print statement because it's a cleaner way to create print statements; 
-#they're also evaluated at run-time. This means that it, and the variable it holds, doesn't exist until the code
-#is executed and the values are not constant. This works well for our scraping app because the data we're scraping
-#is live and will be updated frequently.
-
-
+    except AttributeError:
+        return None
+    
+    img_url = f'https://spaceimages-mars.com/{img_url_rel}'
+   
+    return img_url
 
 
 #create a new DataFrame from the HTML table. Pandas function read_html() searches for and returns a list of tables 
 #found in the HTML. By specifying an index of 0, we're telling Pandas to pull only the first table it encounters, 
 #or the first item in the list. Then, it turns the table into a DataFrame.
-df = pd.read_html('https://galaxyfacts-mars.com')[0]
+#df = pd.read_html('https://galaxyfacts-mars.com')[0]
 #assign columns to the new DataFrame for additional clarity.
-df.columns=['description', 'Mars', 'Earth']
+#df.columns=['description', 'Mars', 'Earth']
 #By using the .set_index() function, we're turning the Description column into the DataFrame's index. 
 #inplace=True means that the updated index will remain in place, without having to reassign the DataFrame to a new variable.
-df.set_index('description', inplace=True)
-df
-
-
-
+#df.set_index('description', inplace=True)
+#df
 #Pandas also has a way to easily convert our DataFrame back into HTML-ready code using the .to_html() function.
-df.to_html()
+#df.to_html()
+
+def mars_facts():
+    # Add try/except for error handling
+    try:
+        # Use 'read_html' to scrape the facts table into a dataframe
+        df = pd.read_html('https://galaxyfacts-mars.com')[0]
 
 
+    except BaseException:
+        return None
+
+    # Assign columns and set index of dataframe
+    df.columns=['Description', 'Mars', 'Earth']
+    df.set_index('Description', inplace=True)
+
+    # Convert dataframe into HTML format, add bootstrap
+    return df.to_html(classes="table table-striped")
+
+#create function to scrape hemisphere data
+
+def hemisphere_data(browser):
+    # 1. Use browser to visit the URL 
+    url = 'https://marshemispheres.com/'
+    browser.visit(url)
+    
+    
+    try:
+        # 2. Create a list to hold the images and titles.
+        hemisphere_image_urls = []
+
+
+        # Create for loop to iterate through hemisphere images
+        for i in range(0, 4):
+
+            hemispheres = {}
+
+            # Click on hemisphere link while navigating to full res image
+
+            hemisphere_page = browser.find_by_css('.thumb')[i]
+            hemisphere_page.click()
+
+            # Parse pages
+            html = browser.html
+            img_soup = soup(html, 'html.parser')
+
+            # 3. Write code to retrieve the image urls and titles for each hemisphere.
+
+            # full res image code
+
+            element1 = img_soup.find('li')
+            hreflink = element1.find('a', target='_blank')['href']
+            img_url = ('https://marshemispheres.com/'+ hreflink)
+            print(hreflink)
+            print(img_url)
+
+            # title code
+            title = img_soup.find('h2', class_= 'title').text
+            print(title)
+
+            hemispheres['img_url'] = img_url
+            hemispheres['title'] = title
+
+            hemisphere_image_urls.append(hemispheres)
+
+            browser.back()
+    
+    except AttributeError:
+        return None
+    
+      
+    return hemisphere_image_urls
 
 
 # end the automatic browser
-browser.quit()
+#browser.quit()
 
+#This last block of code tells Flask that our script is complete 
+# and ready for action. The print statement will print 
+# out the results of our scraping to our terminal after 
+# executing the code.
 
+if __name__ == "__main__":
+
+    # If running as script, print scraped data
+    print(scrape_all())
 
 
 
